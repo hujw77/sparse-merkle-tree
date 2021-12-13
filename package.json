@@ -4,5 +4,8 @@
   "description": "Sparse merkle tree for multiproof",
   "main": "index.js",
   "author": "echo",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "ethereumjs-util": "^7.1.3"
+  }
 }

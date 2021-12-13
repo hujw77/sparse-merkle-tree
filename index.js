@@ -70,7 +70,7 @@ class SparseMerkleTree {
     return decommitment
   }
 
-  proofHex(indices) {
+  proof_hex(indices) {
     return this.bufArrToHex(this.proof(indices))
   }
 
