@@ -1,0 +1,8 @@
+{
+  "name": "sparse-merkle-tree",
+  "version": "1.0.0",
+  "description": "Sparse merkle tree for multiproof",
+  "main": "index.js",
+  "author": "echo",
+  "license": "MIT"
+}
