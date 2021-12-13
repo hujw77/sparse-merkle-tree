@@ -5,6 +5,11 @@
   "main": "index.js",
   "author": "echo",
   "license": "MIT",
+  "homepage": "https://github.com/hujw77/sparse-merkle-tree",
+  "keywords": ["merkle tree", "sparse merkle tree", "solidity"],
+  "bugs": {
+    "url": "https://github.com/hujw77/sparse-merkle-tree/issues"
+  },
   "devDependencies": {
     "ethereumjs-util": "^7.1.3"
   }
