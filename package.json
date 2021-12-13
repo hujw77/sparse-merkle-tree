@@ -1,5 +1,5 @@
 {
-  "name": "@sparse-merkle-tree",
+  "name": "smt-multiproof",
   "version": "1.0.0",
   "description": "Sparse merkle tree for multiproof",
   "main": "index.js",
