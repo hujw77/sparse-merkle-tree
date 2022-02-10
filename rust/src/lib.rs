@@ -132,7 +132,7 @@ where
     H: Hasher,
     I: IntoIterator<Item = T> + Clone,
     I::IntoIter: ExactSizeIterator,
-    T: AsRef<[u8]>,
+    T: AsRef<[u8]> + Clone,
 {
     let mut m_indices: Vec<usize> = indices.to_vec();
     m_indices.sort_by(|a, b| b.cmp(a));
@@ -157,13 +157,12 @@ where
         known[i] = left | right;
     }
     let root = merkle_root(tree);
-    let index_leaves: Vec<T> = leaves
-        .into_iter()
-        .enumerate()
-        // FIXME
-        .filter(|(idx, _)| m_indices.contains(idx))
-        .map(|(_, v)| v)
-        .collect();
+    let mut index_leaves: Vec<T> = vec![];
+    let leafs: Vec<T> = leaves.into_iter().collect();
+    for i in m_indices.clone() {
+        let l = leafs[i].clone();
+        index_leaves.push(l);
+    }
 
     #[cfg(feature = "debug")]
     log::debug!(
@@ -202,6 +201,9 @@ where
             queue.push((tree_index, hash));
         })
         .collect::<Vec<_>>();
+    if queue.is_empty() {
+        return false;
+    }
     let mut decommitment = proof.to_vec();
     loop {
         let (index, hash) = queue.remove(0);
@@ -363,31 +365,31 @@ mod tests {
         let data = vec!["a", "b", "c"];
 
         // when
-        // let proof0 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![0]);
-        // assert!(verify_proof::<Keccak256, _>(
-        //     proof0.root,
-        //     proof0.depth,
-        //     proof0.indices.clone(),
-        //     proof0.proof.clone(),
-        //     proof0.leaves.clone(),
-        // ));
+        let proof0 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![0]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof0.root,
+            proof0.depth,
+            proof0.indices.clone(),
+            proof0.proof.clone(),
+            proof0.leaves.clone(),
+        ));
 
-        // let proof1 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![1]);
-        // assert!(verify_proof::<Keccak256, _>(
-        //     proof1.root,
-        //     proof1.depth,
-        //     proof1.indices,
-        //     proof1.proof,
-        //     proof1.leaves,
-        // ));
-        //let proof2 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![2]);
-        //assert!(verify_proof::<Keccak256, _>(
-        //    proof2.root,
-        //    proof2.depth,
-        //    proof2.indices,
-        //    proof2.proof,
-        //    proof2.leaves,
-        //));
+        let proof1 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![1]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof1.root,
+            proof1.depth,
+            proof1.indices,
+            proof1.proof,
+            proof1.leaves,
+        ));
+        let proof2 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![2]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof2.root,
+            proof2.depth,
+            proof2.indices,
+            proof2.proof,
+            proof2.leaves,
+        ));
 
         let proof3 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![0, 1]);
         log::debug!("{:?}", proof3);
@@ -399,62 +401,106 @@ mod tests {
             proof3.leaves,
         ));
 
-        //let proof4 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![2, 0]);
-        //assert!(verify_proof::<Keccak256, _>(
-        //    proof4.root,
-        //    proof4.depth,
-        //    proof4.indices,
-        //    proof4.proof.clone(),
-        //    proof4.leaves,
-        //));
+        let proof4 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![0, 2]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof4.root,
+            proof4.depth,
+            proof4.indices,
+            proof4.proof,
+            proof4.leaves,
+        ));
 
-        //let proof5 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![2, 1]);
-        //assert!(verify_proof::<Keccak256, _>(
-        //    proof5.root,
-        //    proof5.depth,
-        //    proof5.indices,
-        //    proof5.proof.clone(),
-        //    proof5.leaves,
-        //));
+        let proof5 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![1, 2]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof5.root,
+            proof5.depth,
+            proof5.indices,
+            proof5.proof,
+            proof5.leaves,
+        ));
+
+        let proof6 = merkle_proof::<Keccak256, _, _>(data.clone(), vec![0, 1, 2]);
+        assert!(verify_proof::<Keccak256, _>(
+            proof6.root,
+            proof6.depth,
+            proof6.indices,
+            proof6.proof,
+            proof6.leaves,
+        ));
 
         // then
-        //assert_eq!(hex::encode(proof0.root), hex::encode(proof1.root));
-        //assert_eq!(hex::encode(proof2.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof0.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof2.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof3.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof4.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof5.root), hex::encode(proof1.root));
+        assert_eq!(hex::encode(proof6.root), hex::encode(proof1.root));
 
-        //assert!(!verify_proof::<Keccak256, _>(
-        //    hex!("ab7435dc6d054fe2f2d80bc6d511c4ee773787506cb84b59f9f3f3ed2d9f7a90"),
-        //    proof0.depth,
-        //    proof0.indices.clone(),
-        //    proof0.proof.clone(),
-        //    proof0.leaves.clone(),
-        //));
+        let proof = merkle_proof::<Keccak256, _, _>(data.clone(), vec![]);
+        log::debug!("{:?}", proof);
+        assert!(!verify_proof::<Keccak256, _>(
+            proof.root,
+            proof.depth,
+            proof.indices.clone(),
+            proof.proof.clone(),
+            proof.leaves.clone(),
+        ));
 
-        //assert!(!verify_proof::<Keccak256, _>(
-        //    proof0.root,
-        //    proof0.depth,
-        //    proof0.indices,
-        //    vec![],
-        //    proof0.leaves,
-        //));
+        assert!(!verify_proof::<Keccak256, _>(
+            hex!("ab7435dc6d054fe2f2d80bc6d511c4ee773787506cb84b59f9f3f3ed2d9f7a90"),
+            proof0.depth,
+            proof0.indices.clone(),
+            proof0.proof.clone(),
+            proof0.leaves.clone(),
+        ));
+
+        assert!(!verify_proof::<Keccak256, _>(
+            proof0.root,
+            proof0.depth,
+            proof0.indices,
+            vec![],
+            proof0.leaves,
+        ));
     }
 
     #[test]
     fn should_generate_and_verify_proof_complex() {
+        fn powerset(s: &[usize]) -> Vec<Vec<usize>> {
+            let mut subsets: Vec<Vec<usize>> = vec![];
+            let empty: Vec<usize> = vec![];
+            subsets.push(empty);
+            let mut updated: Vec<Vec<usize>> = vec![];
+            for ele in s {
+                for mut sub in subsets.clone() {
+                    sub.push(*ele);
+                    updated.push(sub);
+                }
+                subsets.append(&mut updated);
+            }
+            subsets
+        }
+
         // given
         let _ = env_logger::try_init();
         let data = vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
-
+        let mut v = vec![];
         for l in 0..data.len() {
-            // when
-            let proof = merkle_proof::<Keccak256, _, _>(data.clone(), vec![l]);
-            // then
-            assert!(verify_proof::<Keccak256, _>(
-                proof.root,
-                proof.depth,
-                proof.indices,
-                proof.proof,
-                proof.leaves
-            ));
+            v.push(l);
+        }
+        let subsets = powerset(&v);
+        for indices in subsets {
+            if !indices.is_empty() {
+                // when
+                let proof = merkle_proof::<Keccak256, _, _>(data.clone(), indices);
+                // then
+                assert!(verify_proof::<Keccak256, _>(
+                    proof.root,
+                    proof.depth,
+                    proof.indices,
+                    proof.proof,
+                    proof.leaves
+                ));
+            }
         }
     }
 
@@ -479,7 +525,7 @@ mod tests {
                     proof.depth,
                     proof.indices,
                     proof.proof,
-                    proof.leaves
+                    proof.leaves,
                 ));
             }
         }
