@@ -16,7 +16,7 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 
 //! This crate implements a simple Sparse Merkle Tree utilities required for inter-op with Ethereum
 //! bridge & Solidity contract.
@@ -74,21 +74,16 @@ mod keccak256 {
 #[cfg(feature = "keccak")]
 pub use keccak256::Keccak256;
 
-/// Construct a root hash of a Sparse Merkle Tree created from given leaves.
-///
-/// See crate-level docs for details about Sparse Merkle Tree construction.
-///
-/// In case an empty list of leaves is passed the function returns a 0-filled hash.
-pub fn merkle_root<H, I, T>(leaves: I) -> Hash
+pub fn merkle_tree<H, I, L>(leaves: I) -> Vec<Hash>
 where
     H: Hasher,
-    I: IntoIterator<Item = T>,
-    T: AsRef<[u8]>,
+    I: IntoIterator<Item = L>,
+    L: AsRef<[u8]>,
 {
-    let leafs: Vec<Hash> = leaves.into_iter().map(|l| H::hash(l.as_ref())).collect();
+    let leafs: Vec<Hash> = leaves.into_iter().map(|l| hash_leaf::<H, L>(l)).collect();
     let num_leaves = leafs.len();
     if num_leaves == 0 {
-        return Hash::default();
+        return vec![Hash::default(), Hash::default()];
     }
     let depth = log2(num_leaves);
 
@@ -100,8 +95,7 @@ where
     let num_nodes = 2 * num_leaves;
     let mut tree = vec![Hash::default(); num_nodes];
     tree[num_leaves..(num_leaves + num_leaves)].clone_from_slice(&leafs[..num_leaves]);
-    for i in (1..=num_leaves - 1).rev() {
-        let mut combined = [0_u8; 64];
+    for i in (1..num_leaves).rev() {
         let left = tree[2 * i];
         let right = tree[2 * i + 1];
 
@@ -110,11 +104,135 @@ where
         log::debug!(" left: {:?}", hex::encode(left));
         log::debug!("right: {:?}", hex::encode(right));
 
-        combined[0..32].copy_from_slice(&left);
-        combined[32..64].copy_from_slice(&right);
-        tree[i] = H::hash(&combined);
+        tree[i] = hash_node::<H>(left, right);
     }
+    tree
+}
+
+pub fn merkle_root(tree: Vec<Hash>) -> Hash {
     tree[1]
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MerkleProof<T> {
+    pub root: Hash,
+    pub proof: Vec<Hash>,
+    pub depth: usize,
+    pub indices: Vec<usize>,
+    pub leaves: Vec<T>,
+}
+
+pub fn merkle_proof<H, I, T>(leaves: I, indices: Vec<usize>) -> MerkleProof<T>
+where
+    H: Hasher,
+    I: IntoIterator<Item = T> + Clone,
+    I::IntoIter: ExactSizeIterator,
+    T: AsRef<[u8]>,
+{
+    let mut m_indices: Vec<usize> = indices.to_vec();
+    m_indices.sort_by(|a, b| b.cmp(a));
+    let tree = merkle_tree::<H, I, T>(leaves.clone());
+    let depth = log2(tree.len()) - 1;
+    let num_leaves = usize::pow(2, depth.try_into().unwrap());
+    let num_nodes = 2 * num_leaves;
+    let mut known = vec![false; num_nodes];
+    let mut decommitment: Vec<Hash> = vec![];
+    for i in m_indices.clone() {
+        known[num_leaves + i] = true;
+    }
+    for i in (1..=num_leaves).rev() {
+        let left = known[2 * i];
+        let right = known[2 * i + 1];
+        if left && !right {
+            decommitment.push(tree[2 * i + 1]);
+        }
+        if !left && right {
+            decommitment.push(tree[2 * i]);
+        }
+        known[i] = left | right;
+    }
+    let root = merkle_root(tree);
+    let index_leaves = leaves
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| m_indices.contains(idx))
+        .map(|(_, v)| v)
+        .collect();
+
+    #[cfg(feature = "debug")]
+    log::debug!(
+        "[merkle_proof] Proof: {:?}",
+        decommitment.iter().map(hex::encode).collect::<Vec<_>>()
+    );
+
+    MerkleProof {
+        root,
+        proof: decommitment,
+        depth,
+        indices: m_indices,
+        leaves: index_leaves,
+    }
+}
+
+pub fn verify_proof<H, P, L>(
+    root: Hash,
+    depth: usize,
+    indices: Vec<usize>,
+    proof: Vec<Hash>,
+    leaves: Vec<L>,
+) -> bool
+where
+    H: Hasher,
+    L: AsRef<[u8]>,
+{
+    let mut queue: Vec<(usize, Hash)> = vec![];
+    for index in indices {
+        let tree_index = usize::pow(2, depth.try_into().unwrap());
+        let hash = H::hash(leaves[index].as_ref());
+        queue.push((tree_index, hash));
+    }
+    let mut decommitment = proof.to_vec();
+    loop {
+        let (index, hash) = queue.remove(0);
+
+        #[cfg(feature = "debug")]
+        log::debug!(
+            "[verify_proof] index: {:?}, hash: {:?}",
+            index,
+            hex::encode(hash)
+        );
+
+        if index == 1 {
+            return root == hash;
+        } else if index % 2 == 0 {
+            queue.push((index / 2, hash_node::<H>(hash, decommitment[0])));
+            decommitment.remove(0);
+        } else if !queue.is_empty() && queue[0].0 == index - 1 {
+            let (_, sibbling_hash) = queue.remove(0);
+            queue.push((index / 2, hash_node::<H>(sibbling_hash, hash)));
+        } else {
+            queue.push((index / 2, hash_node::<H>(decommitment[0], hash)));
+            decommitment.remove(0);
+        }
+    }
+}
+
+fn hash_leaf<H, L>(leaf: L) -> Hash
+where
+    H: Hasher,
+    L: AsRef<[u8]>,
+{
+    H::hash(leaf.as_ref())
+}
+
+fn hash_node<H>(left: Hash, right: Hash) -> Hash
+where
+    H: Hasher,
+{
+    let mut combined = [0_u8; 64];
+    combined[0..32].copy_from_slice(&left);
+    combined[32..64].copy_from_slice(&right);
+    H::hash(&combined)
 }
 
 fn log2(x: usize) -> usize {
