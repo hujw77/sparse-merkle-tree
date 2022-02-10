@@ -80,10 +80,15 @@ where
     I: IntoIterator<Item = L>,
     L: AsRef<[u8]>,
 {
-    let leafs: Vec<Hash> = leaves.into_iter().map(|l| hash_leaf::<H, L>(l)).collect();
-    let num_leaves = leafs.len();
-    if num_leaves == 0 {
+    let mut leafs: Vec<Hash> = leaves.into_iter().map(|l| hash_leaf::<H, L>(l)).collect();
+    let len = leafs.len();
+    if len == 0 {
         return vec![Hash::default(), Hash::default()];
+    }
+    let num_leaves = round_up_to_pow2(len);
+    if num_leaves > len {
+        let emtpy = vec![Hash::default(); num_leaves - len];
+        leafs.extend(emtpy);
     }
     let depth = log2(num_leaves);
 
@@ -243,6 +248,14 @@ fn log2(x: usize) -> usize {
     }
 }
 
+fn round_up_to_pow2(x: usize) -> usize {
+    if x <= 1 {
+        1
+    } else {
+        2 * round_up_to_pow2((x + 1) / 2)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,7 +268,8 @@ mod tests {
         let data: Vec<[u8; 1]> = Default::default();
 
         // when
-        let out = merkle_root::<Keccak256, _, _>(data);
+        let tree = merkle_tree::<Keccak256, _, _>(data);
+        let out = merkle_root(tree);
 
         // then
         assert_eq!(
@@ -268,16 +282,16 @@ mod tests {
     fn should_generate_single_root() {
         // given
         let _ = env_logger::try_init();
-        let mut data = vec![hex!("E04CC55ebEE1cBCE552f250e85c57B70B2E2625b")];
-        data.push(hex!("0000000000000000000000000000000000000000"));
+        let data = vec![hex!("E04CC55ebEE1cBCE552f250e85c57B70B2E2625b")];
 
         // when
-        let out = merkle_root::<Keccak256, _, _>(data);
+        let tree = merkle_tree::<Keccak256, _, _>(data);
+        let out = merkle_root(tree);
 
         // then
         assert_eq!(
             hex::encode(&out),
-            "db047d9da87be3331d28feb8d930b251283a6ab467a185d8c955be1241396f8c"
+            "aeb47a269393297f4b0a3c9c9cfd00c7a4195255274cf39d83dabc2fcc9ff3d7"
         );
     }
 
@@ -291,7 +305,8 @@ mod tests {
         ];
 
         // when
-        let out = merkle_root::<Keccak256, _, _>(data);
+        let tree = merkle_tree::<Keccak256, _, _>(data);
+        let out = merkle_root(tree);
 
         // then
         assert_eq!(
