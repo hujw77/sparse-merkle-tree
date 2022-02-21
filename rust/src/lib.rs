@@ -329,6 +329,29 @@ mod tests {
         );
     }
 
+    //
+    #[test]
+    fn should_generate_root_on_pangolin_test_data() {
+        // given
+        let _ = env_logger::try_init();
+        let data = vec![
+            hex!("5cFe2B74C7bdFb00aD027440c6974792eac62D1E"),
+            hex!("7a0834E39bD85BafCADD02828ebc4520E2181eB9"),
+            hex!("6C5B25EB743Ed204A63A0f0294f1DB025b018E64"),
+            hex!("B62DfF0F2aa8fa5F01184a529664e52eCe17163A"),
+        ];
+
+        // when
+        let tree = merkle_tree::<Keccak256, _, _>(data);
+        let out = merkle_root(tree);
+
+        // then
+        assert_eq!(
+            hex::encode(&out),
+            "de562c60e8a03c61ef0ab761968c14b50b02846dd35ab9faa9dea09d00247600"
+        );
+    }
+
     #[test]
     fn should_generate_root_complex() {
         let _ = env_logger::try_init();
