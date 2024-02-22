@@ -1,11 +1,15 @@
 {
   "name": "smt-multiproof",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sparse merkle tree for multiproof",
   "main": "index.js",
   "author": "echo",
   "license": "MIT",
   "homepage": "https://github.com/hujw77/sparse-merkle-tree",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hujw77/sparse-merkle-tree.git"
+  },
   "keywords": [
     "merkle tree",
     "sparse merkle tree",
